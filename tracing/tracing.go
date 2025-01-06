@@ -1,14 +1,15 @@
-// TODO: document that this can panic on init
 package tracing
 
 import (
+	"context"
 	"net/http"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var DefaultTracing = &defaultTracing
@@ -16,21 +17,21 @@ var DefaultTracing = &defaultTracing
 var defaultTracing Tracing
 
 type Tracing struct {
-	exporter trace.SpanExporter
-	Provider *trace.TracerProvider
+	exporter sdktrace.SpanExporter
+	Provider *sdktrace.TracerProvider
 }
 
-func New(exporter trace.SpanExporter, serviceName string) *Tracing {
+func New(exporter sdktrace.SpanExporter, serviceName string) *Tracing {
 	if exporter == nil {
 		return nil
 	}
 
 	tracer := Tracing{exporter: exporter}
-	batcher := trace.NewBatchSpanProcessor(exporter)
+	batcher := sdktrace.NewBatchSpanProcessor(exporter)
 
-	tracer.Provider = trace.NewTracerProvider(
-		trace.WithSpanProcessor(batcher),
-		trace.WithResource(resource.NewWithAttributes(
+	tracer.Provider = sdktrace.NewTracerProvider(
+		sdktrace.WithSpanProcessor(batcher),
+		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName(serviceName),
 		)),
@@ -43,4 +44,10 @@ func Middleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		otelhttp.NewMiddleware(r.Method+" "+r.URL.Path)(h).ServeHTTP(w, r)
 	})
+}
+
+func Trace(ctx context.Context, spanName string) trace.Span {
+	tr := otel.GetTracerProvider().Tracer("example/server")
+	_, span := tr.Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindServer))
+	return span
 }
